@@ -14,22 +14,27 @@ deck for a second monitor.
      inserted wherever notes are too long for one slide, keeping the clicker in
      sync with the notes deck
 
-## Getting the tool (GitHub)
+## Use it online
 
-This project lives in a **private** GitHub repository:
-https://github.com/TomyTones/Tonijn-Notes-To-Deck
+The tool is hosted directly on GitHub Pages — just open this link in Safari or
+Chrome, no download needed:
 
-You need to be added as a collaborator on the repo before you can access it —
-ask the repo owner to add your GitHub account under **Settings → Collaborators**.
-Once you have access:
+**https://tomytones.github.io/Tonijn-Notes-To-Deck/**
+
+The repository itself is public (code and docs only — no client data), at
+https://github.com/TomyTones/Tonijn-Notes-To-Deck.
+
+## Getting the tool (offline copy)
+
+If you'd rather keep a local copy instead of using the hosted link:
 
 1. Open [`notes-to-deck.html`](https://github.com/TomyTones/Tonijn-Notes-To-Deck/blob/main/notes-to-deck.html)
    on GitHub, click **Download raw file**, and save it to your computer.
 2. Double-click the downloaded file to open it in your browser — see *How to
    use* below.
 
-There is no install step and no server; the file works the same whether it
-came from GitHub, Dropbox, or email.
+There is no install step and no server; the file works the same whether it's
+opened from the hosted link, a local download, Dropbox, or email.
 
 ## How to use
 
