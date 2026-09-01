@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notes to Deck — Teleprompter Generator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://unpkg.com/pptxgenjs@3.12.0/dist/pptxgen.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #0f0f0f; color: #e8e8e8;
+    min-height: 100vh; padding: 2rem 1rem;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .app { width: 100%; max-width: 720px; }
+  .header { margin-bottom: 2.5rem; text-align: center; }
+  .header h1 { font-size: 1.6rem; font-weight: 600; letter-spacing: -0.02em; color: #fff; }
+  .header p  { margin-top: 0.4rem; font-size: 0.88rem; color: #888; line-height: 1.5; }
+  .dropzone {
+    position: relative;   /* anchor for the absolute file input overlay */
+    border: 1.5px dashed #333; border-radius: 12px;
+    padding: 3rem 2rem; text-align: center; cursor: pointer;
+    transition: border-color 0.2s, background 0.2s; background: #161616;
+  }
+  .dropzone:hover, .dropzone.dragover { border-color: #5b8bff; background: #161e30; }
+  .dropzone .icon { font-size: 2.4rem; margin-bottom: 0.8rem; }
+  .dropzone h2 { font-size: 1rem; font-weight: 500; color: #ccc; margin-bottom: 0.3rem; }
+  .dropzone p  { font-size: 0.82rem; color: #666; }
+  #fileInput { display: none; }
+  .browse-btn {
+    display: inline-block; margin-top: 0.8rem;
+    padding: 0.45rem 1.1rem; background: #2a2a2a; color: #ccc;
+    border: 0.5px solid #444; border-radius: 8px; font-size: 0.84rem;
+    cursor: pointer; transition: background 0.2s;
+  }
+  .browse-btn:hover { background: #333; color: #fff; }
+  .settings {
+    margin-top: 1.5rem; background: #161616;
+    border: 0.5px solid #2a2a2a; border-radius: 12px;
+    padding: 1.5rem; display: none;
+  }
+  .settings h3 { font-size: 0.78rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #555; margin-bottom: 1rem; }
+  .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0; border-bottom: 0.5px solid #222; }
+  .setting-row:last-child { border-bottom: none; }
+  .setting-label { font-size: 0.88rem; color: #ccc; }
+  .setting-label small { display: block; font-size: 0.76rem; color: #555; margin-top: 0.15rem; }
+  select, input[type="color"], input[type="range"] {
+    background: #222; border: 0.5px solid #333; color: #e8e8e8;
+    border-radius: 6px; padding: 0.3rem 0.5rem; font-size: 0.84rem; cursor: pointer;
+  }
+  input[type="color"] { width: 48px; height: 32px; padding: 2px 4px; }
+  input[type="range"] { width: 120px; }
+  .range-value { font-size: 0.82rem; color: #888; min-width: 32px; text-align: right; }
+  .file-info {
+    background: #0d1a0d; border: 0.5px solid #1e3d1e; border-radius: 8px;
+    padding: 0.75rem 1rem; font-size: 0.84rem; color: #5dbd5d;
+    display: none; align-items: center; gap: 0.5rem; margin-top: 1rem;
+  }
+  .file-info.visible { display: flex; }
+  .preview { margin-top: 1.5rem; display: none; }
+  .preview h3 { font-size: 0.78rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #555; margin-bottom: 0.75rem; }
+  .slide-preview { background: #161616; border: 0.5px solid #2a2a2a; border-radius: 8px; padding: 0.9rem 1rem; margin-bottom: 0.5rem; display: flex; gap: 1rem; align-items: flex-start; }
+  .slide-preview.overflow { border-color: #5b4a1a; background: #1a1508; }
+  .slide-num   { font-size: 0.7rem; font-weight: 600; color: #444; min-width: 28px; padding-top: 2px; }
+  .slide-notes { font-size: 0.84rem; color: #bbb; line-height: 1.55; white-space: pre-wrap; }
+  .no-notes    { font-size: 0.82rem; color: #444; font-style: italic; }
+  .overflow-tag { display: inline-block; margin-top: 6px; font-size: 0.72rem; color: #c8972a; background: #2a1f00; border: 0.5px solid #5b4a1a; border-radius: 4px; padding: 2px 7px; }
+  .btn-row { margin-top: 1.5rem; display: none; gap: 0.75rem; }
+  .btn-row.visible { display: flex; }
+  .btn { flex: 1; padding: 0.85rem; border: none; border-radius: 10px; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: background 0.2s, transform 0.1s; }
+  .btn:active   { transform: scale(0.99); }
+  .btn:disabled { background: #333 !important; color: #666 !important; cursor: not-allowed; }
+  .btn-primary   { background: #5b8bff; color: #fff; }
+  .btn-primary:hover   { background: #4a7aee; }
+  .btn-secondary { background: #2a2a2a; color: #ccc; border: 0.5px solid #444; }
+  .btn-secondary:hover { background: #333; }
+  .status         { margin-top: 1rem; font-size: 0.84rem; color: #888; text-align: center; min-height: 1.2rem; }
+  .status.error   { color: #e06060; }
+  .status.success { color: #5dbd5d; }
+  footer { margin-top: 3rem; font-size: 0.76rem; color: #333; text-align: center; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <h1>Notes → Teleprompter Deck</h1>
+    <p>Upload a .pptx — generates a teleprompter deck and optionally a patched source file with duplicate slides inserted where notes overflow.</p>
+    <p style="margin-top:0.6rem;font-size:0.8rem;color:#c8972a;background:#1a1200;border:0.5px solid #5b4a1a;border-radius:6px;padding:0.5rem 0.8rem;">
+      ⚠ Save this file to your computer and open it in your browser — it will not work inside Claude's preview panel.
+    </p>
+  </div>
+  <div class="dropzone" id="dropzone">
+    <input type="file" id="fileInput" accept=".pptx,.PPTX">
+    <div class="icon">📂</div>
+    <h2>Drop your .pptx here</h2>
+    <p>Nothing is uploaded — everything runs in your browser</p>
+    <span class="browse-btn" id="browseBtn">Browse for file…</span>
+  </div>
+  <div class="file-info" id="fileInfo"><span>✔</span><span id="fileInfoText"></span></div>
+  <div class="settings" id="settingsPanel">
+    <h3>Output options</h3>
+    <div class="setting-row">
+      <div class="setting-label">Background color<small>White ground per the typographic spec</small></div>
+      <input type="color" id="bgColor" value="#FFFFFF">
+    </div>
+    <div class="setting-row">
+      <div class="setting-label">Text color</div>
+      <input type="color" id="textColor" value="#000000">
+    </div>
+    <div class="setting-row">
+      <div class="setting-label">Font size (pt)<small>Larger = readable from further away</small></div>
+      <div style="display:flex;align-items:center;gap:0.5rem;">
+        <input type="range" id="fontSize" min="18" max="60" value="18" step="2">
+        <span class="range-value" id="fontSizeVal">18</span>
+      </div>
+    </div>
+    <div class="setting-row">
+      <div class="setting-label">Slide layout</div>
+      <select id="slideLayout">
+        <option value="LAYOUT_16x9">16 : 9  (default)</option>
+        <option value="LAYOUT_16x10">16 : 10</option>
+        <option value="LAYOUT_4x3">4 : 3</option>
+      </select>
+    </div>
+    <div class="setting-row">
+      <div class="setting-label">Empty slides (no notes)</div>
+      <select id="emptySlides"><option value="include">Include as empty slide</option><option value="skip">Skip entirely</option></select>
+    </div>
+  </div>
+  <div class="preview" id="previewSection">
+    <h3>Extracted notes preview</h3>
+    <div id="previewList"></div>
+  </div>
+  <div class="btn-row" id="btnRow">
+    <button class="btn btn-secondary" id="btnTeleprompter">↓ Teleprompter deck only</button>
+    <button class="btn btn-primary"   id="btnBoth">↓ Teleprompter + patched source</button>
+  </div>
+  <div class="status" id="status"></div>
+</div>
+<footer>Works in any browser with an internet connection — nothing is uploaded anywhere.</footer>
+
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════════════════════
+//  CAPACITY MODEL — measured in inches, not in "lines"
+//
+//  The previous model counted visual lines and ignored two things
+//  the generator actually writes onto the slide:
+//    · lineSpacingMultiple 1.2 — the model assumed 1.15, and
+//      PowerPoint applies the multiple on top of Arial's own ~1.15
+//      line box, so the real line pitch is ≈1.38 × font size.
+//    · paraSpaceAfter 6pt after EVERY paragraph — 0.83" on a
+//      ten-bullet slide at 18pt, a fifth of the whole text box.
+//  Both errors under-counted height, so text ran off the bottom.
+//
+//  This model measures each paragraph in inches and fills the box
+//  until the next paragraph would not fit.
+//
+//  Geometry (PptxGenJS works in inches):
+//    Slide width      10"
+//    PAD              0.55" — left, right and BOTTOM margin
+//    Text box top     PAD × 1.5 = 0.825"  (clears the title line)
+//    Text box height  slideH - 0.825" - PAD  ← real bottom margin
+//    Text box width   10" - 2 × PAD = 8.9"
+// ══════════════════════════════════════════════════════════════
+var SLIDE_DIMS = { LAYOUT_16x9:{w:10,h:5.625}, LAYOUT_16x10:{w:10,h:6.25}, LAYOUT_4x3:{w:10,h:7.5} };
+var PAD    = 0.55;             // left / right / bottom margin in inches
+var TEXT_W = 10 - PAD * 2;     // 8.9"
+
+// Text box height for a layout, leaving a full PAD of bottom margin.
+// The generator and the capacity model MUST both call this — never a literal,
+// or the two drift apart and text overflows again.
+function textBoxHeight(layout) {
+  var dim = SLIDE_DIMS[layout] || SLIDE_DIMS.LAYOUT_16x9;
+  return dim.h - PAD * 1.5 - PAD;
+}
+
+var ARIAL_CW      = 0.52;   // Arial average char width factor (× fontSize / 72)
+var LINE_PITCH    = 1.38;   // lineSpacingMultiple 1.2 × Arial line box ≈ 1.15
+var PARA_SPACE_PT = 6;      // paraSpaceAfter the generator writes per paragraph
+var BULLET_INDENT = 0.375;  // inches of indent per level (marL 342900 EMU)
+var FILL_SAFETY   = 0.95;   // 5% headroom for within-Arial glyph variance
+
+var BULLET_CODES = ['2022', '25E6', '2013'];  // • ◦ –
+
+// Height in inches one paragraph occupies, including its space-after.
+// Accounts for the bullet indent stealing width, and for hard line
+// breaks (Shift+Enter) each starting a new line regardless of width.
+function paraHeight(para, fontSize) {
+  var r         = stripLeadingBullet(para.text);
+  var useBullet = r.hadBullet || para.level > 0;
+  var lvl       = Math.min(para.level, BULLET_CODES.length - 1);
+  var usableW   = TEXT_W - (useBullet ? BULLET_INDENT * (lvl + 1) : 0);
+  var charW     = ARIAL_CW * fontSize / 72;
+  var lines     = 0;
+  r.stripped.split('\n').forEach(function(seg) {
+    lines += Math.max(1, Math.ceil(seg.length * charW / usableW));
+  });
+  return lines * (fontSize * LINE_PITCH / 72) + PARA_SPACE_PT / 72;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  STATE
+//  slides[] holds the parsed data from the source file.
+//  Each entry: { slideNumber, title, paras, str }
+//    paras : array of { text:string, level:number }
+//            — one entry per paragraph, level = bullet depth
+//    str   : plain string version of paras (for splitting/preview)
+// ══════════════════════════════════════════════════════════════
+var slides     = [];
+var sourceZip  = null;
+var sourceFile = null;
+
+// ══════════════════════════════════════════════════════════════
+//  LIBRARY CHECK
+// ══════════════════════════════════════════════════════════════
+window.addEventListener('load', function() {
+  if (typeof PptxGenJS === 'undefined') setStatus('PptxGenJS failed to load — check internet connection.', 'error');
+  if (typeof JSZip     === 'undefined') setStatus('JSZip failed to load — check internet connection.',     'error');
+});
+
+// ══════════════════════════════════════════════════════════════
+//  DROP ZONE + FILE INPUT
+// ══════════════════════════════════════════════════════════════
+var dropzone  = document.getElementById('dropzone');
+var fileInput = document.getElementById('fileInput');
+dropzone.addEventListener('dragover',  function(e) { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', function()  { dropzone.classList.remove('dragover'); });
+dropzone.addEventListener('drop',      function(e) { e.preventDefault(); dropzone.classList.remove('dragover'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+dropzone.addEventListener('click',     function(e) { if (e.target !== fileInput) fileInput.click(); });
+document.getElementById('browseBtn').addEventListener('click', function(e) { e.stopPropagation(); fileInput.click(); });
+fileInput.addEventListener('change',   function()  {
+  var file = fileInput.files[0];
+  fileInput.value = '';  // reset so re-selecting the same file fires change again
+  if (file) handleFile(file);
+});
+
+// ══════════════════════════════════════════════════════════════
+//  FILE PARSING
+// ══════════════════════════════════════════════════════════════
+async function handleFile(file) {
+  if (!file.name.toLowerCase().endsWith('.pptx')) { setStatus('Please upload a .pptx file.', 'error'); return; }
+  // Warn if file is very large — not a hard limit, just informational
+  if (file.size > 50 * 1024 * 1024) {
+    setStatus('Warning: file is over 50 MB, this may be slow.', '');
+  } else {
+    setStatus('Reading file…');
+  }
+  try {
+    var buffer = await file.arrayBuffer();
+    sourceZip  = await JSZip.loadAsync(buffer);
+    sourceFile = file;
+
+    var slideFiles = Object.keys(sourceZip.files)
+      .filter(function(n) { return /^ppt\/slides\/slide\d+\.xml$/.test(n); })
+      .sort(function(a, b) { return parseInt(a.match(/\d+/)[0]) - parseInt(b.match(/\d+/)[0]); });
+
+    if (!slideFiles.length) { setStatus('No slides found.', 'error'); return; }
+
+    slides = [];
+    for (var i = 0; i < slideFiles.length; i++) {
+      var num      = parseInt(slideFiles[i].match(/\d+/)[0]);  // actual number from filename
+      var slideXml = await sourceZip.files[slideFiles[i]].async('text');
+      var title    = extractTitle(slideXml);
+
+      // Notes: parse into { paras, str }
+      var paras = [];
+      var rp    = 'ppt/slides/_rels/slide' + num + '.xml.rels';
+      if (sourceZip.files[rp]) {
+        var np = extractNotesPath(await sourceZip.files[rp].async('text'));
+        if (np) {
+          var fp = 'ppt/notesSlides/' + np.split('/').pop();
+          if (sourceZip.files[fp]) paras = extractNotesParas(await sourceZip.files[fp].async('text'));
+        }
+      }
+      slides.push({ slideNumber: num, title: title, paras: paras, str: parasToString(paras) });
+    }
+
+    var nc = slides.filter(function(s) { return s.str.trim(); }).length;
+    document.getElementById('fileInfoText').textContent =
+      file.name + ' — ' + slides.length + ' slides, ' + nc + ' with speaker notes';
+    document.getElementById('fileInfo').classList.add('visible');
+    document.getElementById('settingsPanel').style.display = 'block';
+    document.getElementById('btnRow').classList.add('visible');
+    showPreview();
+    setStatus('');
+  } catch(err) {
+    console.error(err);
+    setStatus('Could not read the file: ' + err.message, 'error');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  XML HELPERS
+// ══════════════════════════════════════════════════════════════
+
+// Collect all plain text from <a:t> runs within an XML fragment.
+// Deliberately ignores <a:rPr> siblings — strips bold, italic, color,
+// hyperlinks, font size changes, and any other run-level formatting.
+function extractPlainText(xml) {
+  var runs = [], re = /<a:t[^>]*>([\s\S]*?)<\/a:t>/g, m;
+  while ((m = re.exec(xml)) !== null) runs.push(decodeXmlEntities(m[1]));
+  return runs.join('');
+}
+
+function extractTitle(slideXml) {
+  var m = slideXml.match(/<p:sp>(?:(?!<p:sp>)[\s\S])*?<p:ph[^>]*type="(?:title|ctrTitle)"[^>]*\/>[\s\S]*?<\/p:sp>/);
+  if (m) { var t = extractPlainText(m[0]).trim(); if (t) return t; }
+  return '';
+}
+
+function extractNotesPath(relsXml) {
+  // XML attribute order isn't guaranteed — scan each Relationship tag individually
+  var relRe = /<Relationship[^>]+>/g, rm;
+  while ((rm = relRe.exec(relsXml)) !== null) {
+    var rel = rm[0];
+    if (rel.indexOf('notesSlide') !== -1) {
+      var tm = rel.match(/Target="([^"]+)"/);
+      if (tm) return tm[1];
+    }
+  }
+  return null;
+}
+
+// Parse speaker notes into an array of { text, level } paragraph objects.
+//
+// Notes XML has exactly 3 shapes:
+//   Shape 1: slide thumbnail    — skip
+//   Shape 2: notes text body    — the one we want (parts[2])
+//   Shape 3: slide number field — skip (contains literal "1","2",... text)
+//
+// Key issues handled:
+//   <a:pPr> blocks can contain deeply nested child elements — strip them
+//     entirely before text extraction so their content never leaks through.
+//   <a:br/> inline line breaks within a paragraph become \n.
+//   <a:rPr> run formatting (bold, italic, color, font size) — ignored.
+//   \xa0 non-breaking spaces used for visual indent — stripped.
+//   Empty spacer paragraphs (<a:endParaRPr> only) — dropped.
+function extractNotesParas(notesXml) {
+  var parts = notesXml.split('<p:sp>');
+  if (parts.length < 3) return [];
+  var body = parts[2];   // shape 2 only — notes text body
+
+  // ── Depth-aware paragraph splitter ───────────────────────────────
+  // Simple regex <a:p>(.*?)</a:p> breaks when <a:pPr> contains nested
+  // child elements like <a:lnSpc>, <a:buChar>, <a:defRPr> etc.
+  // We track open/close depth to find the correct </a:p> boundary.
+  function splitParagraphs(xml) {
+    var paras = [], pos = 0;
+    while (pos < xml.length) {
+      var start = xml.indexOf('<a:p', pos);
+      if (start === -1) break;
+      var after = xml[start + 4];
+      if (after !== '>' && after !== ' ' && after !== '\t' && after !== '\r' && after !== '\n') {
+        pos = start + 4; continue;  // <a:pPr or similar — not a paragraph tag
+      }
+      var depth = 1, search = start + 4;
+      while (depth > 0 && search < xml.length) {
+        var no = xml.indexOf('<a:p',  search);
+        var nc = xml.indexOf('</a:p>', search);
+        if (no !== -1) {
+          var c = xml[no + 4];
+          if (c !== '>' && c !== ' ' && c !== '\t' && c !== '\r' && c !== '\n') no = -1;
+        }
+        if (no !== -1 && (nc === -1 || no < nc)) { depth++; search = no + 4; }
+        else if (nc !== -1) {
+          depth--;
+          if (depth === 0) { paras.push(xml.slice(start, nc + 6)); pos = nc + 6; break; }
+          search = nc + 6;
+        } else { pos = start + 4; break; }
+      }
+    }
+    return paras;
+  }
+
+  // ── Strip <a:pPr>...</a:pPr> block ───────────────────────────────
+  // <a:pPr> holds paragraph formatting (margins, bullets, spacing).
+  // It can contain nested elements whose text would otherwise leak into output.
+  // We read lvl= from it first, then remove the whole block.
+  function stripPpr(paraXml) {
+    var start = paraXml.indexOf('<a:pPr');
+    if (start === -1) return paraXml;
+    var tagEnd = paraXml.indexOf('>', start);
+    if (tagEnd !== -1 && paraXml[tagEnd - 1] === '/') {
+      return paraXml.slice(0, start) + paraXml.slice(tagEnd + 1);  // self-closing
+    }
+    var close = paraXml.indexOf('</a:pPr>', start);
+    if (close !== -1) return paraXml.slice(0, start) + paraXml.slice(close + 8);
+    return paraXml;
+  }
+
+  var result = [];
+  var paraList = splitParagraphs(body);
+
+  for (var pi = 0; pi < paraList.length; pi++) {
+    var paraXml = paraList[pi];
+    if (paraXml.indexOf('type="slidenum"') !== -1) continue;
+
+    // Read bullet level from <a:pPr lvl="N"/> BEFORE stripping pPr
+    var lvlM  = paraXml.match(/<a:pPr[^>]*lvl="(\d+)"/);
+    var level = lvlM ? parseInt(lvlM[1]) : 0;
+
+    // Strip the pPr block — its child elements must not contribute text
+    var inner = stripPpr(paraXml);
+
+    // Walk token by token: collect <a:t> content, convert <a:br> to \n, skip all else
+    var text = '', pos = 0;
+    while (pos < inner.length) {
+      var nt = inner.indexOf('<', pos);
+      if (nt === -1) break;
+      if (inner.substr(nt, 4) === '<a:t') {
+        var te = inner.indexOf('>', nt);
+        var ct = inner.indexOf('</a:t>', te !== -1 ? te : nt);
+        if (te !== -1 && ct !== -1) { text += decodeXmlEntities(inner.slice(te + 1, ct)); pos = ct + 6; continue; }
+      }
+      if (inner.substr(nt, 5) === '<a:br') {
+        text += '\n';
+        var be = inner.indexOf('>', nt);
+        pos = be !== -1 ? be + 1 : nt + 5; continue;
+      }
+      pos = nt + 1;
+    }
+
+    // Strip non-breaking spaces used for visual indentation
+    text = text.replace(/ /g, ' ').replace(/ /g, ' ').trim();
+    result.push({ text: text, level: level });
+  }
+
+  while (result.length && !result[0].text)               result.shift();
+  while (result.length && !result[result.length-1].text) result.pop();
+  return result;
+}
+
+// Convert paras array to a plain string for splitting logic and preview display.
+//
+// NORMALISATION: Authors type their own bullet characters in the notes
+// ("- text", "o sub-item", "* item") which appear literally on the slide.
+// We strip those leading characters here and replace them with uniform
+// symbols based on the paragraph's lvl attribute:
+//   level 0 → "— text"   (em-dash, no indent)
+//   level 1 → "  • text"  (bullet, 2-space indent)
+//   level 2 → "    · text" (middle-dot, 4-space indent)
+//
+// Lines with no recognisable leading bullet (e.g. slide 8 free text)
+// are left as-is at level 0.
+//
+// Empty paragraphs are dropped — they waste space on the slide.
+var BULLET_SYMBOLS = ['\u2022 ', '\u25E6 ', '\u2013 '];  // •  ◦  –  (preview matches output)
+
+function stripLeadingBullet(text) {
+  var subLines   = text.split('\n');
+  var anyStripped = false;
+  var result = subLines.map(function(line) {
+    // Strips: - * • – — > and . or o only when followed by whitespace
+    var m = line.match(/^([-*\u2022\u2013\u2014>]|\.(?=\s)|o(?=\s))\s*/);
+    if (m) { anyStripped = true; return line.slice(m[0].length); }
+    return line;
+  });
+  return { stripped: result.join('\n'), hadBullet: anyStripped };
+}
+function parasToString(paras) {
+  return paras
+    .filter(function(p) { return p.text.trim() !== ''; })
+    .map(function(p) {
+      var r       = stripLeadingBullet(p.text);
+      var indent  = '  '.repeat(p.level);
+      var symbol  = BULLET_SYMBOLS[Math.min(p.level, BULLET_SYMBOLS.length - 1)];
+      // If the line had a recognisable bullet OR has a lvl > 0, apply uniform symbol.
+      // Free-text lines (no bullet, level 0) are shown as-is.
+      if (r.hadBullet || p.level > 0) return indent + symbol + r.stripped;
+      return p.text;
+    })
+    .join('\n');
+}
+
+function decodeXmlEntities(str) {
+  return str
+    .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>')
+    .replace(/&quot;/g,'"').replace(/&apos;/g,"'")
+    .replace(/&#xA;/g,'\n').replace(/&#x0D;/g,'');
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SPLITTER — the single source of truth for chunk counts.
+//  Used by the preview, the notes deck and the patched source, so
+//  all three always agree. Operates on {text,level}[] and keeps
+//  each bullet whole — never splits a paragraph mid-word.
+//  boxH comes from textBoxHeight(layout); pass it explicitly.
+// ══════════════════════════════════════════════════════════════
+function splitParasIntoChunks(paras, fontSize, boxH) {
+  var budget = (boxH || textBoxHeight('LAYOUT_16x9')) * FILL_SAFETY;
+  var chunks = [], cur = [], used = 0;
+
+  // A single paragraph can be taller than the whole box (long bullet, large
+  // font). Packing whole paragraphs cannot fix that, so oversized ones are
+  // reflowed at word boundaries first — still never mid-word.
+  var queue = [];
+  paras.forEach(function(para) {
+    if (paraHeight(para, fontSize) > budget) {
+      queue = queue.concat(reflowOversizedPara(para, fontSize, budget));
+    } else {
+      queue.push(para);
+    }
+  });
+
+  queue.forEach(function(para) {
+    var h = paraHeight(para, fontSize);
+    if (used + h > budget && cur.length) { chunks.push(cur); cur = [para]; used = h; }
+    else { cur.push(para); used += h; }
+  });
+
+  if (cur.length) chunks.push(cur);
+  return chunks.length ? chunks : [paras];
+}
+
+// Break one over-tall paragraph into pieces that each fit the budget, cutting
+// only at spaces. Every piece but the last ends in an ellipsis so the reader
+// can see the thought continues. The author's bullet is kept on each piece,
+// which is why a continued bullet reads as a new bullet — cosmetic, logged in
+// BUGS.md. Hard line breaks inside an oversized paragraph are reflowed away.
+function reflowOversizedPara(para, fontSize, budget) {
+  var r         = stripLeadingBullet(para.text);
+  var lvl       = Math.min(para.level, BULLET_CODES.length - 1);
+  var useBullet = r.hadBullet || para.level > 0;
+  var usableW   = TEXT_W - (useBullet ? BULLET_INDENT * (lvl + 1) : 0);
+  var charW     = ARIAL_CW * fontSize / 72;
+  var lineH     = fontSize * LINE_PITCH / 72;
+
+  var perLine  = Math.max(8, Math.floor(usableW / charW));
+  var linesFit = Math.max(1, Math.floor((budget - PARA_SPACE_PT / 72) / lineH));
+  var maxChars = Math.max(perLine, perLine * linesFit) - 2;   // room for the ellipsis
+
+  var words = r.stripped.split(/\s+/).filter(function(w) { return w; });
+  var pieces = [], cur = '';
+  words.forEach(function(w) {
+    var candidate = cur ? cur + ' ' + w : w;
+    if (candidate.length > maxChars && cur) { pieces.push(cur); cur = w; }
+    else cur = candidate;
+  });
+  if (cur) pieces.push(cur);
+
+  return pieces.map(function(text, i) {
+    var last = i === pieces.length - 1;
+    return {
+      text: (r.hadBullet ? '- ' : '') + text + (last ? '' : '…'),
+      level: para.level
+    };
+  });
+}
+
+// Current text box height from the layout selector.
+function currentBoxH() {
+  return textBoxHeight(document.getElementById('slideLayout').value);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  PREVIEW
+// ══════════════════════════════════════════════════════════════
+function showPreview() {
+  var fontSize = parseInt(document.getElementById('fontSize').value);
+  var list     = document.getElementById('previewList');
+  list.innerHTML = '';
+
+  slides.forEach(function(slide) {
+    var hasNotes  = slide.str.trim().length > 0;
+    var parts     = hasNotes
+      ? splitParasIntoChunks(slide.paras.filter(function(p){return p.text.trim();}), fontSize, currentBoxH())
+      : [];
+    var willSplit = parts.length > 1;
+
+    var row = document.createElement('div');
+    row.className = 'slide-preview' + (willSplit ? ' overflow' : '');
+
+    var numEl = document.createElement('div');
+    numEl.className  = 'slide-num';
+    numEl.textContent = slide.slideNumber;
+    row.appendChild(numEl);
+
+    var notesEl = document.createElement('div');
+    notesEl.className = 'slide-notes';
+
+    if (slide.title) {
+      var te = document.createElement('strong');
+      te.style.cssText = 'display:block;margin-bottom:4px;color:#ddd;white-space:normal;';
+      te.textContent = slide.title;
+      notesEl.appendChild(te);
+    }
+    if (hasNotes) {
+      var preview = slide.str.length > 200 ? slide.str.slice(0, 200) + '…' : slide.str;
+      notesEl.appendChild(document.createTextNode(preview));
+      if (willSplit) {
+        var tag = document.createElement('span');
+        tag.className   = 'overflow-tag';
+        tag.textContent = '⚠ splits into ' + parts.length + ' slides — source gets ' + (parts.length - 1) + ' duplicate(s) inserted';
+        notesEl.appendChild(document.createElement('br'));
+        notesEl.appendChild(tag);
+      }
+    } else {
+      var e = document.createElement('span');
+      e.className   = 'no-notes';
+      e.textContent = 'No speaker notes — empty slide';
+      notesEl.appendChild(e);
+    }
+    row.appendChild(notesEl);
+    list.appendChild(row);
+  });
+  document.getElementById('previewSection').style.display = 'block';
+}
+
+document.getElementById('fontSize').addEventListener('input', function() {
+  document.getElementById('fontSizeVal').textContent = this.value;
+  if (slides.length) showPreview();
+});
+
+// ══════════════════════════════════════════════════════════════
+//  BUTTON HANDLERS
+//  Both buttons are disabled during generation to prevent
+//  double-clicks. The "both" button awaits each output in
+//  sequence so status messages don't overwrite each other.
+// ══════════════════════════════════════════════════════════════
+document.getElementById('btnTeleprompter').addEventListener('click', async function() {
+  setBtns(false);
+  await generateTeleprompter();
+  setBtns(true);
+});
+
+document.getElementById('btnBoth').addEventListener('click', async function() {
+  setBtns(false);
+  await generateTeleprompter();
+  await generatePatchedSource();
+  setBtns(true);
+});
+
+function setBtns(enabled) {
+  document.getElementById('btnTeleprompter').disabled = !enabled;
+  document.getElementById('btnBoth').disabled         = !enabled;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  GENERATE TELEPROMPTER DECK
+// ══════════════════════════════════════════════════════════════
+async function generateTeleprompter() {
+  setStatus('Generating teleprompter deck…');
+  var bgColor   = document.getElementById('bgColor').value.replace('#','');
+  var textColor = document.getElementById('textColor').value.replace('#','');
+  var fontSize  = parseInt(document.getElementById('fontSize').value);
+  var layout    = document.getElementById('slideLayout').value;
+  var emptyMode = document.getElementById('emptySlides').value;
+  var SW   = SLIDE_DIMS[layout].w;
+  var boxH = textBoxHeight(layout);   // leaves a full PAD of bottom margin
+
+  try {
+    var pres = new PptxGenJS();
+    pres.layout = layout;
+
+    slides.forEach(function(slide) {
+      var filteredParas = slide.paras.filter(function(p) { return p.text.trim(); });
+      var hasNotes      = filteredParas.length > 0;
+      if (!hasNotes && emptyMode === 'skip') return;
+
+      if (!hasNotes) {
+        var s = pres.addSlide();
+        s.background = { color: bgColor };
+        if (slide.title) s.addText(slide.title, { x:PAD, y:PAD*0.5, w:SW-PAD*2, h:0.35, fontSize:13, color:'555555', fontFace:'Arial', align:'right', margin:0 });
+        return;
+      }
+
+      var paraChunks = splitParasIntoChunks(filteredParas, fontSize, boxH);
+
+      paraChunks.forEach(function(chunk, pi) {
+        var s = pres.addSlide();
+        s.background = { color: bgColor };
+
+        if (slide.title) s.addText(slide.title, { x:PAD, y:PAD*0.5, w:SW-PAD*2, h:0.35, fontSize:13, color:'888888', fontFace:'Arial', align:'right', margin:0 });
+
+        var textRuns = chunk.map(function(para, i) {
+          var r = stripLeadingBullet(para.text);
+          var useBullet = r.hadBullet || para.level > 0;
+          var lvl = Math.min(para.level, BULLET_CODES.length - 1);
+          return {
+            text: useBullet ? r.stripped : para.text,
+            options: {
+              bullet: useBullet ? { characterCode: BULLET_CODES[lvl] } : false,
+              indentLevel: lvl,
+              breakLine: i < chunk.length - 1,
+              paraSpaceAfter: 6
+            }
+          };
+        });
+
+        s.addText(textRuns, {
+          x: PAD, y: PAD * 1.5,
+          w: SW - PAD * 2, h: boxH,
+          fontSize: fontSize, color: textColor,
+          fontFace: 'Arial', align: 'left', valign: 'top',
+          shrinkText: true, lineSpacingMultiple: 1.2, margin: 0
+        });
+      });
+    });
+
+    await pres.writeFile({ fileName: 'teleprompter-deck.pptx' });
+    setStatus('✔ Teleprompter deck downloaded.', 'success');
+  } catch(err) {
+    console.error(err);
+    setStatus('Error generating teleprompter deck: ' + err.message, 'error');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  GENERATE PATCHED SOURCE FILE
+//
+//  For each slide whose notes overflow (needs N output slides),
+//  we insert (N-1) exact duplicates of that slide immediately
+//  after it in the source deck.
+//
+//  Files modified inside the ZIP per duplicate slide added:
+//    ppt/slides/slideX.xml             — copy of source slide XML
+//    ppt/slides/_rels/slideX.xml.rels  — copy of rels, notes ref updated
+//    ppt/notesSlides/notesSlideX.xml   — copy of notes XML
+//    ppt/notesSlides/_rels/notesSlideX.xml.rels — copy, slide ref updated
+//    ppt/presentation.xml              — <p:sldIdLst> rebuilt in new order
+//    ppt/_rels/presentation.xml.rels   — new <Relationship> entries added
+//    [Content_Types].xml               — new <Override> entries added
+// ══════════════════════════════════════════════════════════════
+async function generatePatchedSource() {
+  setStatus('Patching source file…');
+  var fontSize = parseInt(document.getElementById('fontSize').value);
+  // Same box height as the notes deck, so both outputs agree on chunk counts.
+  var boxH     = currentBoxH();
+
+  // Check if any slides actually need extra slides in the source
+  var overflowSlides = slides.filter(function(s) {
+    return splitParasIntoChunks(s.paras.filter(function(p){return p.text.trim();}), fontSize, boxH).length > 1;
+  });
+
+  if (overflowSlides.length === 0) {
+    setStatus('✔ No overflow slides — source file is already in sync.', 'success');
+    return;
+  }
+
+  try {
+    // Re-parse the original file bytes fresh (avoids any state from previous runs)
+    var buffer = await sourceFile.arrayBuffer();
+    var zip    = await JSZip.loadAsync(buffer);
+
+    // ── Find highest existing slide and notesSlide numbers ──────────
+    var allKeys  = Object.keys(zip.files);
+    var maxSlide = highestNumber(allKeys, /^ppt\/slides\/slide(\d+)\.xml$/);
+    var maxNotes = highestNumber(allKeys, /^ppt\/notesSlides\/notesSlide(\d+)\.xml$/);
+
+    // ── Read files we need to patch ─────────────────────────────────
+    var presXml     = await zip.files['ppt/presentation.xml'].async('text');
+    var presRelsXml = await zip.files['ppt/_rels/presentation.xml.rels'].async('text');
+    var ctXml       = await zip.files['[Content_Types].xml'].async('text');
+    var maxRid      = highestRid(presRelsXml);
+
+    // ── Build current slide order from presentation.xml ─────────────
+    // Map rId → slide filename (e.g. rId2 → "slides/slide1.xml")
+    var ridToFile = {};
+    var relRe = /Id="(rId\d+)"[^>]*Type="[^"]*\/slide"[^>]*Target="([^"]+)"/g, rm;
+    while ((rm = relRe.exec(presRelsXml)) !== null) ridToFile[rm[1]] = rm[2];
+
+    // Build ordered array of { slideFile, rId } from <p:sldIdLst>
+    var sldIdRe = /<p:sldId\b[^\/]*/g, sm;
+    var order   = [];
+    while ((sm = sldIdRe.exec(presXml)) !== null) {
+      var ridM = sm[0].match(/r:id="(rId\d+)"/);
+      if (ridM && ridToFile[ridM[1]]) order.push({ slideFile: ridToFile[ridM[1]], rId: ridM[1] });
+    }
+
+    // ── Plan insertions ──────────────────────────────────────────────
+    // For each overflow slide, record how many duplicates to insert and where.
+    // We collect these first, then apply back-to-front so indices stay valid.
+    var insertions = [];
+    slides.forEach(function(slide) {
+      var extras = splitParasIntoChunks(slide.paras.filter(function(p){return p.text.trim();}), fontSize, boxH).length - 1;
+      if (extras === 0) return;
+
+      var target = 'slides/slide' + slide.slideNumber + '.xml';
+      var pos    = -1;
+      for (var i = 0; i < order.length; i++) {
+        if (order[i].slideFile === target) { pos = i; break; }
+      }
+      if (pos === -1) return;
+      insertions.push({ pos: pos, count: extras, srcNum: slide.slideNumber });
+    });
+
+    // Apply back-to-front so earlier positions aren't shifted by later insertions
+    insertions.sort(function(a, b) { return b.pos - a.pos; });
+
+    var totalAdded = 0;
+
+    for (var ii = 0; ii < insertions.length; ii++) {
+      var ins    = insertions[ii];
+      var srcNum = ins.srcNum;
+
+      // Read source slide files
+      var srcSlideXml = await zip.files['ppt/slides/slide' + srcNum + '.xml'].async('uint8array');
+      var srcSlideRel = await zip.files['ppt/slides/_rels/slide' + srcNum + '.xml.rels'].async('text');
+
+      // Find the notes file this slide links to
+      var notesRef  = extractNotesPath(srcSlideRel);
+      var notesFile = notesRef ? notesRef.split('/').pop() : null;  // e.g. "notesSlide2.xml"
+      var notesNum  = notesFile ? parseInt(notesFile.match(/\d+/)[0]) : null;
+
+      var srcNotesXml = null, srcNotesRel = null;
+      if (notesNum) {
+        var nxp = 'ppt/notesSlides/notesSlide' + notesNum + '.xml';
+        var nrp = 'ppt/notesSlides/_rels/notesSlide' + notesNum + '.xml.rels';
+        if (zip.files[nxp]) srcNotesXml = await zip.files[nxp].async('uint8array');
+        if (zip.files[nrp]) srcNotesRel = await zip.files[nrp].async('text');
+      }
+
+      // Insert the required number of duplicates
+      for (var ci = 0; ci < ins.count; ci++) {
+        maxSlide++; maxNotes++; maxRid++;
+        var newSlideNum = maxSlide;
+        var newNotesNum = maxNotes;
+        var newRid      = 'rId' + maxRid;
+
+        // 1. Copy slide XML verbatim — same visuals as the original
+        zip.file('ppt/slides/slide' + newSlideNum + '.xml', srcSlideXml);
+
+        // 2. Copy slide .rels, updating the notes reference to point to new notes file
+        var newSlideRel = notesFile
+          ? srcSlideRel.replace(new RegExp(notesFile.replace('.','\\.'),'g'), 'notesSlide' + newNotesNum + '.xml')
+          : srcSlideRel;
+        zip.file('ppt/slides/_rels/slide' + newSlideNum + '.xml.rels', newSlideRel);
+
+        // 3. Copy notes XML verbatim — same speaker notes
+        if (srcNotesXml) zip.file('ppt/notesSlides/notesSlide' + newNotesNum + '.xml', srcNotesXml);
+
+        // 4. Copy notes .rels, updating the back-reference to the new slide
+        if (srcNotesRel) {
+          var newNotesRel = srcNotesRel.replace(
+            new RegExp('slide' + srcNum + '\\.xml', 'g'),
+            'slide' + newSlideNum + '.xml'
+          );
+          zip.file('ppt/notesSlides/_rels/notesSlide' + newNotesNum + '.xml.rels', newNotesRel);
+        }
+
+        // 5. Add Content_Types entries for both new files
+        var addCT = '<Override PartName="/ppt/slides/slide' + newSlideNum +
+          '.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>';
+        if (srcNotesXml) addCT += '<Override PartName="/ppt/notesSlides/notesSlide' + newNotesNum +
+          '.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"/>';
+        ctXml = ctXml.replace('</Types>', addCT + '</Types>');
+
+        // 6. Add relationship entry in presentation.xml.rels
+        var newRel = '<Relationship Id="' + newRid +
+          '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide"' +
+          ' Target="slides/slide' + newSlideNum + '.xml"/>';
+        presRelsXml = presRelsXml.replace('</Relationships>', newRel + '</Relationships>');
+
+        // 7. Insert into the ordered slide list (right after the original)
+        order.splice(ins.pos + 1 + ci, 0, {
+          slideFile: 'slides/slide' + newSlideNum + '.xml',
+          rId: newRid
+        });
+
+        totalAdded++;
+      }
+    }
+
+    // ── Rebuild <p:sldIdLst> in presentation.xml with the new order ─
+    // Preserve existing slide IDs; only mint new ones for inserted duplicates.
+    // Scan only <p:sldId> elements to avoid picking up the slide master ID
+    // (which exceeds the OOXML ST_SlideId max of 2147483647 and triggers repair).
+    var existingSldIds = {};
+    var sldIdScan = /<p:sldId\b[^>]+>/g, sis;
+    while ((sis = sldIdScan.exec(presXml)) !== null) {
+      var im = sis[0].match(/\bid="(\d+)"/), rm2 = sis[0].match(/r:id="(rId\d+)"/);
+      if (im && rm2) existingSldIds[rm2[1]] = parseInt(im[1]);
+    }
+    var existingVals = Object.values(existingSldIds);
+    var maxId = existingVals.length ? Math.max.apply(null, existingVals) : 256;
+    var newLst = '<p:sldIdLst>';
+    order.forEach(function(entry) {
+      var id = existingSldIds[entry.rId] !== undefined ? existingSldIds[entry.rId] : ++maxId;
+      newLst += '<p:sldId id="' + id + '" r:id="' + entry.rId + '"/>';
+    });
+    newLst += '</p:sldIdLst>';
+    presXml = presXml.replace(/<p:sldIdLst>[\s\S]*?<\/p:sldIdLst>/, newLst);
+
+    // ── Write patched files back ─────────────────────────────────────
+    zip.file('ppt/presentation.xml',           presXml);
+    zip.file('ppt/_rels/presentation.xml.rels', presRelsXml);
+    zip.file('[Content_Types].xml',             ctXml);
+
+    // ── Download ─────────────────────────────────────────────────────
+    var blob     = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+    var baseName = sourceFile.name.replace(/\.pptx$/i, '');
+    triggerDownload(blob, baseName + '-patched.pptx');
+    setStatus('✔ Patched source downloaded — ' + totalAdded + ' duplicate slide(s) inserted.', 'success');
+
+  } catch(err) {
+    console.error(err);
+    setStatus('Error patching source: ' + err.message, 'error');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  UTILITIES
+// ══════════════════════════════════════════════════════════════
+function highestNumber(keys, re) {
+  var max = 0;
+  keys.forEach(function(k) { var m = k.match(re); if (m) { var n = parseInt(m[1]); if (n > max) max = n; } });
+  return max;
+}
+function highestRid(relsXml) {
+  var max = 0, re = /Id="rId(\d+)"/g, m;
+  while ((m = re.exec(relsXml)) !== null) { var n = parseInt(m[1]); if (n > max) max = n; }
+  return max;
+}
+function triggerDownload(blob, filename) {
+  var url = URL.createObjectURL(blob);
+  var a   = document.createElement('a');
+  a.href  = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+}
+function setStatus(msg, type) {
+  var el = document.getElementById('status');
+  el.textContent = msg;
+  el.className   = 'status' + (type ? ' ' + type : '');
+}
+</script>
+</body>
+</html>

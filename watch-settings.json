@@ -1,0 +1,7 @@
+{
+  "bgColor": "FFFFFF",
+  "textColor": "000000",
+  "fontSize": 18,
+  "layout": "LAYOUT_16x9",
+  "emptyMode": "include"
+}

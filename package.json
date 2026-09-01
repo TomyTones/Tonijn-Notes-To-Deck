@@ -1,0 +1,13 @@
+{
+  "name": "teleprompter-watch-folder",
+  "version": "1.0.0",
+  "description": "Watch-folder automation for Teleprompter Deck Generator",
+  "main": "watch.js",
+  "scripts": {
+    "start": "node watch.js"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1",
+    "pptxgenjs": "^3.12.0"
+  }
+}
